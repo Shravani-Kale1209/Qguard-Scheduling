@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Booking {
+  id              Int      @id @default(autoincrement())
+  name            String
+  email           String
+  company         String
+  jobTitle        String
+  phone           String?
+  startTime       DateTime
+  endTime         DateTime
+  timezone        String
+  status          String   @default("CONFIRMED")
+  rescheduleToken String   @unique
+  cancelToken     String   @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([startTime])
+  @@index([status])
+}
