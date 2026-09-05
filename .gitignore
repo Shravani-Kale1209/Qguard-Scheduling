@@ -107,3 +107,15 @@ Thumbs.db
 
 # Prisma generated artifacts
 generated/prisma/
+
+# AI agent / IDE configurations
+.agents/
+.claude/
+.cursor/
+.devin/
+
+# Test scripts (dev-only)
+backend/test_*.js
+
+# Empty placeholder files
+backend/docker

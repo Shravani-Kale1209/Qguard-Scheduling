@@ -1,8 +1,11 @@
 'use strict';
 
 const { z } = require('zod');
-const { createBooking } = require('../services/bookingService');
+const { createBooking, getBooking, cancelBooking, rescheduleBooking } = require('../services/bookingService');
 const { isValidTimezone } = require('../services/schedulingService');
+
+// Normalize deprecated timezone aliases (e.g. Asia/Calcutta -> Asia/Kolkata)
+const normalizeTimezone = (tz) => (tz === 'Asia/Calcutta' ? 'Asia/Kolkata' : tz);
 
 // Zod schema for validating the incoming payload
 const bookingSchema = z.object({
@@ -55,8 +58,12 @@ function getNowInTimezone(timezone) {
  */
 async function createBookingHandler(req, res) {
   try {
-    // 1. Validate payload with Zod
-    const parsed = bookingSchema.safeParse(req.body);
+    // 1. Normalize timezone before validation
+    const body = { ...req.body };
+    if (body.timezone) body.timezone = normalizeTimezone(body.timezone);
+
+    // 2. Validate payload with Zod
+    const parsed = bookingSchema.safeParse(body);
     
     if (!parsed.success) {
       const errorMsg = parsed.error.issues.map(i => i.message).join(', ');
@@ -90,10 +97,13 @@ async function createBookingHandler(req, res) {
         email: booking.email,
         company: booking.company,
         jobTitle: booking.jobTitle,
+        phone: booking.phone || null,
         startTime: booking.startTime.toISOString(),
         endTime: booking.endTime.toISOString(),
         timezone: booking.timezone,
         status: booking.status,
+        rescheduleToken: booking.rescheduleToken,
+        cancelToken: booking.cancelToken,
       }
     });
 
@@ -113,4 +123,110 @@ async function createBookingHandler(req, res) {
   }
 }
 
-module.exports = { createBookingHandler };
+async function getBookingHandler(req, res) {
+  try {
+    const { token } = req.params;
+    const booking = await getBooking(token);
+
+    return res.status(200).json({
+      success: true,
+      booking: {
+        name: booking.name,
+        email: booking.email,
+        company: booking.company,
+        jobTitle: booking.jobTitle,
+        startTime: booking.startTime.toISOString(),
+        endTime: booking.endTime.toISOString(),
+        timezone: booking.timezone,
+        status: booking.status,
+      }
+    });
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({
+        success: false,
+        message: err.message, // Return "message" as requested
+      });
+    }
+    console.error('[bookingController] Unexpected error in getBooking:', err);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+}
+
+async function cancelBookingHandler(req, res) {
+  try {
+    const { cancelToken } = req.params;
+    await cancelBooking(cancelToken);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Booking cancelled successfully'
+    });
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({
+        success: false,
+        message: err.message,
+      });
+    }
+    console.error('[bookingController] Unexpected error in cancelBooking:', err);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+}
+
+const rescheduleSchema = z.object({
+  startTime: z.string().refine((val) => !isNaN(Date.parse(val)), {
+    message: 'Invalid datetime format for startTime',
+  }),
+  timezone: z.string().refine((val) => isValidTimezone(val), {
+    message: 'Invalid timezone name',
+  }),
+});
+
+async function rescheduleBookingHandler(req, res) {
+  try {
+    const { rescheduleToken } = req.params;
+
+    // Normalize timezone alias before validation
+    const body = { ...req.body };
+    if (body.timezone) body.timezone = normalizeTimezone(body.timezone);
+
+    const parsed = rescheduleSchema.safeParse(body);
+    if (!parsed.success) {
+      const errorMsg = parsed.error.issues.map(i => i.message).join(', ');
+      return res.status(400).json({
+        success: false,
+        message: `Validation failed: ${errorMsg}`,
+      });
+    }
+
+    const data = parsed.data;
+
+    // Reject past dates universally
+    const startTimeUtc = new Date(data.startTime);
+    if (startTimeUtc.getTime() < Date.now()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot reschedule a slot into the past.',
+      });
+    }
+
+    await rescheduleBooking(rescheduleToken, data);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Demo rescheduled successfully'
+    });
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({
+        success: false,
+        message: err.message,
+      });
+    }
+    console.error('[bookingController] Unexpected error in rescheduleBooking:', err);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+}
+
+module.exports = { createBookingHandler, getBookingHandler, cancelBookingHandler, rescheduleBookingHandler };

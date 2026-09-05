@@ -77,6 +77,11 @@ async function getSlots(req, res) {
   }
 
   // ------------------------------------------------------------------
+  // Normalize deprecated timezone aliases
+  // ------------------------------------------------------------------
+  const normalizedTimezone = timezone === 'Asia/Calcutta' ? 'Asia/Kolkata' : timezone;
+
+  // ------------------------------------------------------------------
   // Validate date format
   // ------------------------------------------------------------------
   if (!DATE_REGEX.test(date)) {
@@ -107,7 +112,7 @@ async function getSlots(req, res) {
   // ------------------------------------------------------------------
   // Validate timezone
   // ------------------------------------------------------------------
-  if (!isValidTimezone(timezone)) {
+  if (!isValidTimezone(normalizedTimezone)) {
     return res.status(400).json({
       success: false,
       error: `Invalid timezone: "${timezone}". Use a valid IANA timezone name (e.g. "Asia/Kolkata", "America/New_York").`,
@@ -117,24 +122,24 @@ async function getSlots(req, res) {
   // ------------------------------------------------------------------
   // Reject dates in the past (relative to the user's timezone)
   // ------------------------------------------------------------------
-  const today = todayInTimezone(timezone);
+  const today = todayInTimezone(normalizedTimezone);
   if (date < today) {
     return res.status(400).json({
       success: false,
-      error: `Cannot query slots for a past date. Today is ${today} in timezone "${timezone}".`,
+      error: `Cannot query slots for a past date. Today is ${today} in timezone "${normalizedTimezone}".`,
     });
   }
 
   // ------------------------------------------------------------------
   // Reject weekends
   // ------------------------------------------------------------------
-  const dow = localDayOfWeek(date, timezone);
+  const dow = localDayOfWeek(date, normalizedTimezone);
   if (dow === 0 || dow === 6) {
     const dayName = dow === 0 ? 'Sunday' : 'Saturday';
     return res.status(200).json({
       success: true,
       date,
-      timezone,
+      timezone: normalizedTimezone,
       slots: [],
       message: `No slots available on ${dayName}s. Demo bookings are available Monday – Friday only.`,
     });
@@ -144,12 +149,12 @@ async function getSlots(req, res) {
   // Fetch and return available slots
   // ------------------------------------------------------------------
   try {
-    const slots = await getAvailableSlots(date, timezone);
+    const slots = await getAvailableSlots(date, normalizedTimezone);
 
     return res.status(200).json({
       success: true,
       date,
-      timezone,
+      timezone: normalizedTimezone,
       slots,
     });
   } catch (err) {

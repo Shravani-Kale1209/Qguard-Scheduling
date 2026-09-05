@@ -6,7 +6,7 @@ services:
 
     environment:
       POSTGRES_USER: qguard
-      POSTGRES_PASSWORD: qguard_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qguard_password}
       POSTGRES_DB: qguard_db
 
     ports:
